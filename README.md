@@ -11,10 +11,6 @@ A lightweight, extremely secure, and standalone password manager for Windows wri
     *   **HMAC-SHA256**을 이용한 금고 파일(`vault.dat`) 무결성 및 변조 방지 검증.
 *   **완벽한 메모리 보안 (Memory Safety):**
     *   메모리 스캔 공격을 방지하기 위해 사용이 끝난 비밀번호나 암호화 키는 즉시 `SecureZeroMemory`를 통해 메모리에서 영구 삭제.
-    *   버퍼 오버플로우를 막기 위해 최신 C11 안전 문자열 함수(`_tcscpy_s`, `_stprintf_s` 등) 적용.
-*   **자동 입력 및 단축키 (Auto-Type & Hotkeys):**
-    *   지연 시간(Delay) 설정 후 포커스 된 창에 자동으로 아이디/비밀번호를 타이핑하는 기능 지원.
-    *   글로벌 단축키 지원: `Ctrl+Alt+1` (아이디), `Ctrl+Alt+2` (비밀번호), `Ctrl+Alt+3` (전체 탭 이동 포함 입력).
 *   **클립보드 보호 (Clipboard Protection):**
     *   클립보드에 복사된 아이디/비밀번호는 10초 후 자동으로 클립보드에서 삭제되어 유출 방지.
 *   **드래그 앤 드롭 (OLE Drag & Drop):**
@@ -26,12 +22,11 @@ A lightweight, extremely secure, and standalone password manager for Windows wri
 *   `crypto.c` / `crypto.h` - BCrypt 기반 AES, PBKDF2, HMAC, 난수 생성 등 암호화 모듈 구현부
 *   `resource.rc` / `resource.h` - Windows 다이얼로그 템플릿, 아이콘, 단축키 및 UI 컨트롤 리소스 정의
 *   `build.bat` - MSVC 커맨드라인 자동 빌드 스크립트
-*   `add_bom.ps1` - 소스 파일 한글 깨짐 방지를 위한 UTF-8 BOM 자동 삽입 파워쉘 스크립트
 
 ## 🛠️ 빌드 방법 (How to Build)
 
-본 프로젝트는 Visual Studio (MSVC) 환경에서 컴파일되도록 설계되었습니다.
-password-manager.vcxproj 로 프로젝트를 열어 컴파일 하면 됩니다.
+* 본 프로젝트는 Visual Studio (MSVC) 환경에서 컴파일되도록 설계되었습니다.
+* password-manager.vcxproj 로 프로젝트를 열어 컴파일 하면 됩니다.
 
 ## 📖 사용 방법 (Usage)
 
