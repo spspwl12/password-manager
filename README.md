@@ -19,10 +19,6 @@ A lightweight, extremely secure, and standalone password manager for Windows wri
     *   클립보드에 복사된 아이디/비밀번호는 10초 후 자동으로 클립보드에서 삭제되어 유출 방지.
 *   **드래그 앤 드롭 (OLE Drag & Drop):**
     *   리스트에서 아이디나 비밀번호를 마우스로 클릭한 채 웹 브라우저나 로그인 창으로 바로 끌어다 놓아(Drag & Drop) 입력 가능. (순수 C 언어로 OLE COM 인터페이스 자체 구현)
-*   **다이나믹 리사이징 (Dynamic UI):**
-    *   창 크기 조절 및 최대화 지원. 창 크기에 맞춰 내부 컨트롤과 리스트뷰가 깨짐이나 잔상 없이 자연스럽게 늘어나고 배치됨.
-*   **크로스 컴파일 완벽 호환 (Universal Portability):**
-    *   내부적으로 데이터를 모두 **UTF-8 표준**으로 변환하여 저장하므로, MSVC에서 `Multi-Byte` 환경으로 빌드하든 `Unicode(Wide)` 환경으로 빌드하든 생성된 `vault.dat` 파일이 100% 완벽하게 호환됨.
 
 ## 📂 파일 구조 (File Structure)
 
@@ -37,18 +33,7 @@ A lightweight, extremely secure, and standalone password manager for Windows wri
 본 프로젝트는 Visual Studio (MSVC) 환경에서 컴파일되도록 설계되었습니다.
 
 **방법 1: 스크립트를 통한 빌드**
-1. 시작 메뉴에서 **"x64 Native Tools Command Prompt for VS"** (또는 x86) 개발자 명령 프롬프트를 엽니다.
-2. 프로젝트 폴더로 이동한 후 `build.bat` 스크립트를 실행합니다.
-   ```cmd
-   > build.bat
-   ```
-3. 컴파일이 완료되면 `PasswordManager.exe` 파일이 생성됩니다.
-
-**방법 2: Visual Studio IDE 사용**
-1. 빈 C++ Windows 데스크톱 프로젝트를 생성합니다.
-2. `.c`, `.h`, `.rc` 파일들을 프로젝트에 추가합니다.
-3. 속성 -> 링커 -> 입력 -> 추가 종속성에 `bcrypt.lib`, `comctl32.lib`, `ole32.lib` 를 추가합니다. (코드 내의 `#pragma comment` 덕분에 생략 가능할 수도 있습니다.)
-4. `Ctrl+Shift+B`를 눌러 솔루션을 빌드합니다. (한글 깨짐 방지를 위해 파일들이 UTF-8 BOM으로 저장되어 있어야 합니다.)
+1. password-manager.vcxproj 로 프로젝트를 열어 컴파일 하면 됩니다.
 
 ## 📖 사용 방법 (Usage)
 
