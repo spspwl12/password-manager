@@ -38,12 +38,17 @@ int entry_count = 0;
 TCHAR vault_path[MAX_PATH];
 uint8_t global_salt[SALT_SIZE];
 
-int autotype_delay = 3;
-int autotype_index = -1;
-int autotype_mode = 0; /* 1=ID, 2=PW, 3=ALL */
+HFONT g_hListFont = NULL;
+HIMAGELIST g_hImageList = NULL;
 
 /* UI Helpers */
 void InitListView(HWND hList) {
+    g_hListFont = CreateFont(-18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("Segoe UI"));
+    SendMessage(hList, WM_SETFONT, (WPARAM)g_hListFont, TRUE);
+    
+    g_hImageList = ImageList_Create(1, 36, ILC_COLOR32, 1, 0);
+    ListView_SetImageList(hList, g_hImageList, LVSIL_SMALL);
+
     LVCOLUMN lvc = {0};
     lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
     lvc.fmt = LVCFMT_LEFT;
@@ -77,6 +82,236 @@ void Utf8ToTchar(const char *in, TCHAR *out, size_t out_max) {
     WideCharToMultiByte(CP_ACP, 0, wstr, -1, out, (int)out_max, NULL, NULL);
     free(wstr);
 #endif
+}
+
+/* Secure Edit Control Subclass */
+#define WM_GET_SECURE_TEXT (WM_USER + 100)
+#define WM_SET_SECURE_TEXT (WM_USER + 101)
+
+uint8_t ui_session_key[32];
+
+typedef struct {
+    uint8_t enc_buffer[512];
+    size_t enc_len;
+    int len;
+    uint8_t iv[16];
+} SecureEditData;
+
+static void SecureBufferReplace(SecureEditData *data, int start, int end, const TCHAR *insert_str, int insert_len) {
+    TCHAR temp[512] = {0};
+    if (data->enc_len > 0) {
+        size_t p_len;
+        uint8_t *plain = aes_cbc_decrypt(data->enc_buffer, data->enc_len, ui_session_key, data->iv, &p_len);
+        if (plain) {
+            memcpy(temp, plain, p_len);
+            secure_wipe(plain, p_len);
+            free(plain);
+        }
+    }
+    
+    if (start > end) { int t = start; start = end; end = t; }
+    if (start < 0) start = 0;
+    if (end > data->len) end = data->len;
+    
+    int del_len = end - start;
+    int tail_len = data->len - end;
+    
+    if (insert_len != del_len && tail_len > 0) {
+        memmove(&temp[start + insert_len], &temp[end], tail_len * sizeof(TCHAR));
+    }
+    if (insert_len > 0 && insert_str) {
+        memcpy(&temp[start], insert_str, insert_len * sizeof(TCHAR));
+    }
+    
+    data->len = data->len - del_len + insert_len;
+    temp[data->len] = 0;
+    
+    if (data->len > 0) {
+        secure_rand(data->iv, 16);
+        size_t c_len;
+        uint8_t *cipher = aes_cbc_encrypt((uint8_t*)temp, (data->len + 1) * sizeof(TCHAR), ui_session_key, data->iv, &c_len);
+        if (cipher) {
+            memcpy(data->enc_buffer, cipher, c_len);
+            data->enc_len = c_len;
+            free(cipher);
+        }
+    } else {
+        data->enc_len = 0;
+    }
+    secure_wipe(temp, sizeof(temp));
+}
+
+LRESULT CALLBACK SecureEditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    SecureEditData *data = (SecureEditData*)dwRefData;
+    switch (uMsg) {
+        case WM_GET_SECURE_TEXT: {
+            TCHAR *out = (TCHAR*)lParam;
+            size_t max_len = wParam;
+            if (data->len > 0 && data->enc_len > 0) {
+                size_t p_len;
+                uint8_t *plain = aes_cbc_decrypt(data->enc_buffer, data->enc_len, ui_session_key, data->iv, &p_len);
+                if (plain) {
+                    _tcscpy_s(out, max_len, (TCHAR*)plain);
+                    secure_wipe(plain, p_len);
+                    free(plain);
+                } else out[0] = 0;
+            } else out[0] = 0;
+            return TRUE;
+        }
+        case WM_SET_SECURE_TEXT: {
+            const TCHAR *text = (const TCHAR *)lParam;
+            SecureBufferReplace(data, 0, data->len, text, (int)_tcslen(text));
+            
+            TCHAR asterisks[256];
+            for (int i=0; i<data->len; i++) asterisks[i] = TEXT('*');
+            asterisks[data->len] = 0;
+            DefSubclassProc(hwnd, WM_SETTEXT, 0, (LPARAM)asterisks);
+            SendMessage(hwnd, EM_SETSEL, data->len, data->len);
+            return TRUE;
+        }
+        case WM_CHAR: {
+            TCHAR ch = (TCHAR)wParam;
+            DWORD sel = (DWORD)SendMessage(hwnd, EM_GETSEL, 0, 0);
+            int start = LOWORD(sel);
+            int end = HIWORD(sel);
+            
+            if (ch == VK_BACK) {
+                if (start == end && start > 0) {
+                    SecureBufferReplace(data, start - 1, start, NULL, 0);
+                } else if (start != end) {
+                    SecureBufferReplace(data, start, end, NULL, 0);
+                }
+                return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+            } else if (ch >= 32) {
+                if (data->len < 255) {
+                    SecureBufferReplace(data, start, end, &ch, 1);
+                    return DefSubclassProc(hwnd, uMsg, (WPARAM)TEXT('*'), lParam);
+                }
+                return 0;
+            }
+            break;
+        }
+        case WM_KEYDOWN: {
+            if (wParam == VK_DELETE) {
+                DWORD sel = (DWORD)SendMessage(hwnd, EM_GETSEL, 0, 0);
+                int start = LOWORD(sel);
+                int end = HIWORD(sel);
+                if (start == end && start < data->len) {
+                    SecureBufferReplace(data, start, start + 1, NULL, 0);
+                } else if (start != end) {
+                    SecureBufferReplace(data, start, end, NULL, 0);
+                }
+                return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+            }
+            break;
+        }
+        case WM_PASTE: {
+            if (OpenClipboard(hwnd)) {
+#ifdef UNICODE
+                HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+#else
+                HANDLE hData = GetClipboardData(CF_TEXT);
+#endif
+                if (hData) {
+                    TCHAR *clip_text = GlobalLock(hData);
+                    if (clip_text) {
+                        int clip_len = (int)_tcslen(clip_text);
+                        DWORD sel = (DWORD)SendMessage(hwnd, EM_GETSEL, 0, 0);
+                        int start = LOWORD(sel);
+                        int end = HIWORD(sel);
+                        if (start > end) { int t = start; start = end; end = t; }
+                        
+                        if (data->len - (end - start) + clip_len <= 255) {
+                            SecureBufferReplace(data, start, end, clip_text, clip_len);
+                            
+                            TCHAR asterisks[256];
+                            for(int i=0; i<clip_len && i<255; i++) asterisks[i] = TEXT('*');
+                            asterisks[clip_len < 256 ? clip_len : 255] = 0;
+                            SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM)asterisks);
+                        }
+                        GlobalUnlock(hData);
+                    }
+                }
+                CloseClipboard();
+            }
+            return 0;
+        }
+        case WM_COPY:
+        case WM_CUT: {
+            DWORD sel = (DWORD)SendMessage(hwnd, EM_GETSEL, 0, 0);
+            int start = LOWORD(sel);
+            int end = HIWORD(sel);
+            if (start > end) { int t = start; start = end; end = t; }
+            if (start != end) {
+                TCHAR temp[512] = {0};
+                if (data->enc_len > 0) {
+                    size_t p_len;
+                    uint8_t *plain = aes_cbc_decrypt(data->enc_buffer, data->enc_len, ui_session_key, data->iv, &p_len);
+                    if (plain) {
+                        memcpy(temp, plain, p_len);
+                        secure_wipe(plain, p_len);
+                        free(plain);
+                    }
+                }
+                int copy_len = end - start;
+                TCHAR *copy_str = malloc((copy_len + 1) * sizeof(TCHAR));
+                memcpy(copy_str, &temp[start], copy_len * sizeof(TCHAR));
+                copy_str[copy_len] = 0;
+                
+                if (OpenClipboard(hwnd)) {
+                    EmptyClipboard();
+                    size_t bytes = (copy_len + 1) * sizeof(TCHAR);
+                    HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, bytes);
+                    memcpy(GlobalLock(hg), copy_str, bytes);
+                    GlobalUnlock(hg);
+#ifdef UNICODE
+                    SetClipboardData(CF_UNICODETEXT, hg);
+#else
+                    SetClipboardData(CF_TEXT, hg);
+#endif
+                    CloseClipboard();
+                }
+                secure_wipe(copy_str, copy_len * sizeof(TCHAR));
+                free(copy_str);
+                
+                if (uMsg == WM_CUT) {
+                    SecureBufferReplace(data, start, end, NULL, 0);
+                    SendMessage(hwnd, EM_REPLACESEL, TRUE, (LPARAM)TEXT(""));
+                }
+                secure_wipe(temp, sizeof(temp));
+            }
+            return 0;
+        }
+        case WM_IME_STARTCOMPOSITION:
+        case WM_IME_COMPOSITION:
+        case WM_IME_ENDCOMPOSITION:
+        case WM_IME_CHAR:
+        case WM_CONTEXTMENU:
+            return 0;
+        case WM_NCDESTROY:
+            secure_wipe(data->enc_buffer, sizeof(data->enc_buffer));
+            RemoveWindowSubclass(hwnd, SecureEditProc, uIdSubclass);
+            free(data);
+            break;
+    }
+    return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+}
+
+void AttachSecureEdit(HWND hEdit) {
+    SecureEditData *data = calloc(1, sizeof(SecureEditData));
+    SetWindowSubclass(hEdit, SecureEditProc, 1, (DWORD_PTR)data);
+    LONG_PTR style = GetWindowLongPtr(hEdit, GWL_STYLE);
+    SetWindowLongPtr(hEdit, GWL_STYLE, style & ~ES_PASSWORD);
+}
+
+void GetSecureEditText(HWND hEdit, TCHAR *out, size_t max_len) {
+    if (!SendMessage(hEdit, WM_GET_SECURE_TEXT, max_len, (LPARAM)out)) {
+        out[0] = 0;
+    }
+}
+
+void SetSecureEditText(HWND hEdit, const TCHAR *text) {
+    SendMessage(hEdit, WM_SET_SECURE_TEXT, 0, (LPARAM)text);
 }
 
 void RefreshList(HWND hList) {
@@ -175,7 +410,10 @@ ULONG STDMETHODCALLTYPE DataObject_Release(IDataObject *This) {
     CDataObject *pThis = (CDataObject *)This;
     ULONG ref = InterlockedDecrement(&pThis->ref_count);
     if (ref == 0) {
-        free(pThis->text);
+        if (pThis->text) {
+            secure_wipe(pThis->text, wcslen(pThis->text) * sizeof(WCHAR));
+            free(pThis->text);
+        }
         free(pThis);
     }
     return ref;
@@ -420,66 +658,14 @@ void CopyToClipboard(HWND hwnd, const TCHAR *text) {
     }
 }
 
-void SendString(const TCHAR *s) {
-    while (*s) {
-        INPUT ip = {0};
-        ip.type = INPUT_KEYBOARD;
-        
-        SHORT vk = VkKeyScan(*s);
-        ip.ki.wVk = vk & 0xFF;
-        
-        SendInput(1, &ip, sizeof(INPUT));
-        ip.ki.dwFlags = KEYEVENTF_KEYUP;
-        SendInput(1, &ip, sizeof(INPUT));
-        s++;
-    }
-}
-
-void SendTab() {
-    INPUT ip = {0};
-    ip.type = INPUT_KEYBOARD;
-    ip.ki.wVk = VK_TAB;
-    SendInput(1, &ip, sizeof(INPUT));
-    ip.ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(1, &ip, sizeof(INPUT));
-}
-
-void PerformAutoType(int mode, int index) {
-    if (index < 0 || index >= entry_count) return;
-    
-    if (mode == 1 || mode == 3) {
-        TCHAR t_user[256];
-        Utf8ToTchar(entries[index].username, t_user, 256);
-        SendString(t_user);
-    }
-    if (mode == 3) {
-        SendTab();
-    }
-    if (mode == 2 || mode == 3) {
-        uint8_t iv[16] = {0};
-        size_t len = 0;
-        uint8_t *pw_bytes = aes_cbc_decrypt(entries[index].enc_password, entries[index].enc_len, master_key, iv, &len);
-        if (pw_bytes) {
-            char *utf8_pw = (char*)pw_bytes;
-            utf8_pw[len] = 0;
-            
-            TCHAR t_pw[256];
-            Utf8ToTchar(utf8_pw, t_pw, 256);
-            
-            SendString(t_pw);
-            secure_wipe(t_pw, sizeof(t_pw));
-            secure_wipe(pw_bytes, len);
-            free(pw_bytes);
-        }
-    }
-}
-
 /* Dialog Procs */
 INT_PTR CALLBACK EntryDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static int edit_idx = -1;
     switch (msg) {
         case WM_INITDIALOG: {
             edit_idx = (int)lParam;
+            AttachSecureEdit(GetDlgItem(hwnd, IDC_EDIT_PASSWORD));
+            
             if (edit_idx >= 0) {
                 TCHAR t_user[256];
                 Utf8ToTchar(entries[edit_idx].username, t_user, 256);
@@ -496,7 +682,7 @@ INT_PTR CALLBACK EntryDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     TCHAR t_pw[256];
                     Utf8ToTchar(utf8_pw, t_pw, 256);
                     
-                    SetDlgItemText(hwnd, IDC_EDIT_PASSWORD, t_pw);
+                    SetSecureEditText(GetDlgItem(hwnd, IDC_EDIT_PASSWORD), t_pw);
                     secure_wipe(t_pw, sizeof(t_pw));
                     secure_wipe(pw_bytes, len);
                     free(pw_bytes);
@@ -508,7 +694,7 @@ INT_PTR CALLBACK EntryDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             if (LOWORD(wParam) == IDOK) {
                 TCHAR user[256], pass[256];
                 GetDlgItemText(hwnd, IDC_EDIT_USERNAME, user, 256);
-                GetDlgItemText(hwnd, IDC_EDIT_PASSWORD, pass, 256);
+                GetSecureEditText(GetDlgItem(hwnd, IDC_EDIT_PASSWORD), pass, 256);
                 
                 int idx = edit_idx >= 0 ? edit_idx : entry_count;
                 entries[idx].title[0] = '\0';
@@ -543,10 +729,13 @@ INT_PTR CALLBACK EntryDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 INT_PTR CALLBACK MasterDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_INITDIALOG:
+            AttachSecureEdit(GetDlgItem(hwnd, IDC_EDIT_MASTER));
+            return TRUE;
         case WM_COMMAND:
             if (LOWORD(wParam) == IDOK) {
                 TCHAR pw[128];
-                GetDlgItemText(hwnd, IDC_EDIT_MASTER, pw, sizeof(pw)/sizeof(TCHAR));
+                GetSecureEditText(GetDlgItem(hwnd, IDC_EDIT_MASTER), pw, 128);
                 if (LoadVault(pw) == 1) {
                     secure_wipe(pw, sizeof(pw));
                     EndDialog(hwnd, 1);
@@ -565,11 +754,15 @@ INT_PTR CALLBACK MasterDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 INT_PTR CALLBACK NewVaultDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_INITDIALOG:
+            AttachSecureEdit(GetDlgItem(hwnd, IDC_EDIT_NEWPW1));
+            AttachSecureEdit(GetDlgItem(hwnd, IDC_EDIT_NEWPW2));
+            return TRUE;
         case WM_COMMAND:
             if (LOWORD(wParam) == IDOK) {
                 TCHAR pw1[128], pw2[128];
-                GetDlgItemText(hwnd, IDC_EDIT_NEWPW1, pw1, sizeof(pw1)/sizeof(TCHAR));
-                GetDlgItemText(hwnd, IDC_EDIT_NEWPW2, pw2, sizeof(pw2)/sizeof(TCHAR));
+                GetSecureEditText(GetDlgItem(hwnd, IDC_EDIT_NEWPW1), pw1, 128);
+                GetSecureEditText(GetDlgItem(hwnd, IDC_EDIT_NEWPW2), pw2, 128);
                 if (_tcscmp(pw1, pw2) != 0) {
                     MessageBox(hwnd, TEXT("비밀번호가 일치하지 않습니다."), TEXT("오류"), MB_ICONERROR);
                     return TRUE;
@@ -612,11 +805,6 @@ INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             if (p) _tcscpy_s(p + 1, MAX_PATH - (p - vault_path) - 1, TEXT("vault.dat"));
             
             InitListView(GetDlgItem(hwnd, IDC_LISTVIEW));
-            SetDlgItemInt(hwnd, IDC_EDIT_DELAY, 3, FALSE);
-            
-            RegisterHotKey(hwnd, HOTKEY_ID, MOD_CONTROL | MOD_ALT, '1');
-            RegisterHotKey(hwnd, HOTKEY_PW, MOD_CONTROL | MOD_ALT, '2');
-            RegisterHotKey(hwnd, HOTKEY_ALL, MOD_CONTROL | MOD_ALT, '3');
             
             FILE *f = _tfopen(vault_path, TEXT("rb"));
             if (f) {
@@ -663,15 +851,12 @@ INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             MOVE_CTRL(IDC_BTN_ADD, 0, 1, 0, 0);
             MOVE_CTRL(IDC_BTN_EDIT, 0, 1, 0, 0);
             MOVE_CTRL(IDC_BTN_DELETE, 0, 1, 0, 0);
-            MOVE_CTRL(IDC_STATIC_STATUS, 0, 1, 0, 0);
-            
-            MOVE_CTRL(IDC_GROUP_PASTE, 1, 1, 0, 0);
-            MOVE_CTRL(IDC_STATIC_DELAY, 1, 1, 0, 0);
-            MOVE_CTRL(IDC_EDIT_DELAY, 1, 1, 0, 0);
-            MOVE_CTRL(IDC_BTN_AUTOTYPE, 1, 1, 0, 0);
+            MOVE_CTRL(IDC_CHK_ALWAYSONTOP, 0, 1, 0, 0);
+            MOVE_CTRL(IDC_STATIC_STATUS, 0, 1, 1, 0);
+
+            MOVE_CTRL(IDC_GROUP_PASTE, 0, 1, 1, 0);
             MOVE_CTRL(IDC_BTN_COPYID, 1, 1, 0, 0);
             MOVE_CTRL(IDC_BTN_COPYPW, 1, 1, 0, 0);
-            MOVE_CTRL(IDC_STATIC_HOTKEY, 1, 1, 0, 0);
             
             EndDeferWindowPos(hdwp);
             
@@ -762,15 +947,9 @@ INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                     free(pw_bytes);
                     SetDlgItemText(hwnd, IDC_STATIC_STATUS, TEXT("비밀번호가 복사되었습니다 (10초 후 삭제)."));
                 }
-            } else if (id == IDC_BTN_AUTOTYPE && sel >= 0) {
-                autotype_delay = GetDlgItemInt(hwnd, IDC_EDIT_DELAY, NULL, FALSE);
-                autotype_index = sel;
-                autotype_mode = 3;
-                SetTimer(hwnd, TIMER_COUNTDOWN, 1000, NULL);
-                SetTimer(hwnd, TIMER_AUTOTYPE, autotype_delay * 1000, NULL);
-                TCHAR buf[128];
-                _stprintf_s(buf, sizeof(buf)/sizeof(TCHAR), TEXT("%d초 후 자동입력됩니다..."), autotype_delay);
-                SetDlgItemText(hwnd, IDC_STATIC_STATUS, buf);
+            } else if (id == IDC_CHK_ALWAYSONTOP) {
+                BOOL isTop = IsDlgButtonChecked(hwnd, IDC_CHK_ALWAYSONTOP);
+                SetWindowPos(hwnd, isTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             }
             return TRUE;
         }
@@ -782,37 +961,15 @@ INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                     CloseClipboard();
                 }
                 SetDlgItemText(hwnd, IDC_STATIC_STATUS, TEXT("클립보드가 지워졌습니다."));
-            } else if (wParam == TIMER_COUNTDOWN) {
-                autotype_delay--;
-                if (autotype_delay > 0) {
-                    TCHAR buf[128];
-                    _stprintf_s(buf, sizeof(buf)/sizeof(TCHAR), TEXT("%d초 후 자동입력됩니다..."), autotype_delay);
-                    SetDlgItemText(hwnd, IDC_STATIC_STATUS, buf);
-                } else {
-                    KillTimer(hwnd, TIMER_COUNTDOWN);
-                }
-            } else if (wParam == TIMER_AUTOTYPE) {
-                KillTimer(hwnd, TIMER_AUTOTYPE);
-                KillTimer(hwnd, TIMER_COUNTDOWN);
-                SetDlgItemText(hwnd, IDC_STATIC_STATUS, TEXT("자동입력 완료."));
-                PerformAutoType(autotype_mode, autotype_index);
             }
             return TRUE;
-        case WM_HOTKEY: {
-            HWND hList = GetDlgItem(hwnd, IDC_LISTVIEW);
-            int sel = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
-            if (sel >= 0) {
-                if (wParam == HOTKEY_ID) PerformAutoType(1, sel);
-                else if (wParam == HOTKEY_PW) PerformAutoType(2, sel);
-                else if (wParam == HOTKEY_ALL) PerformAutoType(3, sel);
-            }
-            return TRUE;
-        }
         case WM_CLOSE:
             secure_wipe(master_key, 32);
             DestroyWindow(hwnd);
             return TRUE;
         case WM_DESTROY:
+            if (g_hListFont) DeleteObject(g_hListFont);
+            if (g_hImageList) ImageList_Destroy(g_hImageList);
             PostQuitMessage(0);
             return TRUE;
     }
@@ -821,14 +978,16 @@ INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR cmd, int show) {
     hInst = hInstance;
-    
+
+    secure_rand(ui_session_key, 32);
+
     OleInitialize(NULL);
     InitCommonControls();
-    
+
     HWND hwnd = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_MAIN), NULL, MainDlgProc);
     if (!hwnd) return 0;
     ShowWindow(hwnd, show);
-    
+
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
         if (!IsDialogMessage(hwnd, &msg)) {
@@ -836,7 +995,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR cmd, int show) {
             DispatchMessage(&msg);
         }
     }
-    
+      
     OleUninitialize();
     return (int)msg.wParam;
 }

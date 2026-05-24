@@ -11,23 +11,17 @@ BEGIN
     CONTROL "", IDC_LISTVIEW, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
             7, 7, 406, 230
 
-    PUSHBUTTON  "추가(&A)",   IDC_BTN_ADD,      7,   244, 55, 18
-    PUSHBUTTON  "수정(&E)",   IDC_BTN_EDIT,     66,  244, 55, 18
-    PUSHBUTTON  "삭제(&D)",   IDC_BTN_DELETE,   125, 244, 55, 18
+    GROUPBOX    "관리 및 옵션", IDC_GROUP_PASTE, 7, 238, 406, 55
 
-    GROUPBOX    "붙여넣기", IDC_GROUP_PASTE, 190, 238, 223, 55
+    PUSHBUTTON  "추가(&A)",   IDC_BTN_ADD,      15,  251, 55, 18
+    PUSHBUTTON  "수정(&E)",   IDC_BTN_EDIT,     75,  251, 55, 18
+    PUSHBUTTON  "삭제(&D)",   IDC_BTN_DELETE,   135, 251, 55, 18
 
-    LTEXT       "딜레이(초):", IDC_STATIC_DELAY, 198, 255, 42, 10
-    EDITTEXT    IDC_EDIT_DELAY, 242, 253, 22, 13, ES_NUMBER | ES_CENTER
+    PUSHBUTTON  "ID 복사",      IDC_BTN_COPYID,   280, 249, 60, 22
+    PUSHBUTTON  "PW 복사",      IDC_BTN_COPYPW,   345, 249, 60, 22
 
-    PUSHBUTTON  "자동입력(&T)", IDC_BTN_AUTOTYPE, 270, 251, 58, 18
-    PUSHBUTTON  "ID 복사",      IDC_BTN_COPYID,   332, 251, 36, 18
-    PUSHBUTTON  "PW 복사",      IDC_BTN_COPYPW,   372, 251, 36, 18
-
-    LTEXT       "단축키: Ctrl+Alt+1=ID  Ctrl+Alt+2=PW  Ctrl+Alt+3=전체", IDC_STATIC_HOTKEY,
-                198, 274, 210, 10
-
-    LTEXT       "준비", IDC_STATIC_STATUS, 7, 284, 180, 10
+    AUTOCHECKBOX "항상 위에 고정", IDC_CHK_ALWAYSONTOP, 15, 276, 80, 10
+    LTEXT       "준비", IDC_STATIC_STATUS, 100, 276, 305, 10
 END
 
 /* ===== Entry Add/Edit Dialog ===== */
