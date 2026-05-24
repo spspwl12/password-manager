@@ -21,7 +21,6 @@ A lightweight, extremely secure, and standalone password manager for Windows wri
 *   `main.c` - 메인 애플리케이션 로직, UI 이벤트 핸들링, 파일 입출력 및 OLE Drag & Drop COM 구현부
 *   `crypto.c` / `crypto.h` - BCrypt 기반 AES, PBKDF2, HMAC, 난수 생성 등 암호화 모듈 구현부
 *   `resource.rc` / `resource.h` - Windows 다이얼로그 템플릿, 아이콘, 단축키 및 UI 컨트롤 리소스 정의
-*   `build.bat` - MSVC 커맨드라인 자동 빌드 스크립트
 
 ## 🛠️ 빌드 방법 (How to Build)
 
