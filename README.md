@@ -31,9 +31,7 @@ A lightweight, extremely secure, and standalone password manager for Windows wri
 ## 🛠️ 빌드 방법 (How to Build)
 
 본 프로젝트는 Visual Studio (MSVC) 환경에서 컴파일되도록 설계되었습니다.
-
-**방법 1: 스크립트를 통한 빌드**
-1. password-manager.vcxproj 로 프로젝트를 열어 컴파일 하면 됩니다.
+password-manager.vcxproj 로 프로젝트를 열어 컴파일 하면 됩니다.
 
 ## 📖 사용 방법 (Usage)
 
