@@ -1,0 +1,76 @@
+﻿#pragma code_page(65001)
+#include <windows.h>
+#include "resource.h"
+
+/* ===== Main Dialog ===== */
+IDD_MAIN DIALOGEX 0, 0, 420, 300
+STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME
+CAPTION "Password Manager"
+FONT 9, "Segoe UI"
+BEGIN
+    CONTROL "", IDC_LISTVIEW, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
+            7, 7, 406, 230
+
+    PUSHBUTTON  "추가(&A)",   IDC_BTN_ADD,      7,   244, 55, 18
+    PUSHBUTTON  "수정(&E)",   IDC_BTN_EDIT,     66,  244, 55, 18
+    PUSHBUTTON  "삭제(&D)",   IDC_BTN_DELETE,   125, 244, 55, 18
+
+    GROUPBOX    "붙여넣기", IDC_GROUP_PASTE, 190, 238, 223, 55
+
+    LTEXT       "딜레이(초):", IDC_STATIC_DELAY, 198, 255, 42, 10
+    EDITTEXT    IDC_EDIT_DELAY, 242, 253, 22, 13, ES_NUMBER | ES_CENTER
+
+    PUSHBUTTON  "자동입력(&T)", IDC_BTN_AUTOTYPE, 270, 251, 58, 18
+    PUSHBUTTON  "ID 복사",      IDC_BTN_COPYID,   332, 251, 36, 18
+    PUSHBUTTON  "PW 복사",      IDC_BTN_COPYPW,   372, 251, 36, 18
+
+    LTEXT       "단축키: Ctrl+Alt+1=ID  Ctrl+Alt+2=PW  Ctrl+Alt+3=전체", IDC_STATIC_HOTKEY,
+                198, 274, 210, 10
+
+    LTEXT       "준비", IDC_STATIC_STATUS, 7, 284, 180, 10
+END
+
+/* ===== Entry Add/Edit Dialog ===== */
+IDD_ENTRY DIALOGEX 0, 0, 240, 100
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "항목 편집"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT       "아이디:",  -1,       10, 12,  35, 10
+    EDITTEXT    IDC_EDIT_USERNAME,    50, 10, 180, 14, ES_AUTOHSCROLL
+
+    LTEXT       "비밀번호:", -1,      10, 32,  35, 10
+    EDITTEXT    IDC_EDIT_PASSWORD,   50, 30, 180, 14, ES_AUTOHSCROLL | ES_PASSWORD
+
+    DEFPUSHBUTTON "확인",   IDOK,     120, 58, 50, 18
+    PUSHBUTTON    "취소",   IDCANCEL, 176, 58, 50, 18
+END
+
+/* ===== Master Password Dialog ===== */
+IDD_MASTER DIALOGEX 0, 0, 220, 70
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "마스터 비밀번호 입력"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT       "마스터 비밀번호:", -1, 10, 14, 65, 10
+    EDITTEXT    IDC_EDIT_MASTER,       78, 12, 132, 14, ES_PASSWORD | ES_AUTOHSCROLL
+
+    DEFPUSHBUTTON "확인",   IDOK,      105, 38, 50, 18
+    PUSHBUTTON    "취소",   IDCANCEL,  160, 38, 50, 18
+END
+
+/* ===== New Vault Dialog ===== */
+IDD_NEWVAULT DIALOGEX 0, 0, 240, 95
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "새 금고 만들기"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT       "마스터 비밀번호:",   -1, 10, 14, 70, 10
+    EDITTEXT    IDC_EDIT_NEWPW1,          85, 12, 145, 14, ES_PASSWORD | ES_AUTOHSCROLL
+
+    LTEXT       "비밀번호 확인:",     -1, 10, 34, 70, 10
+    EDITTEXT    IDC_EDIT_NEWPW2,          85, 32, 145, 14, ES_PASSWORD | ES_AUTOHSCROLL
+
+    DEFPUSHBUTTON "확인",   IDOK,         125, 60, 50, 18
+    PUSHBUTTON    "취소",   IDCANCEL,     180, 60, 50, 18
+END

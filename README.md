@@ -1,2 +1,64 @@
-# password-manager
-심플 패스워드 매니저
+# Win32 Secure Password Manager
+
+A lightweight, extremely secure, and standalone password manager for Windows written entirely in pure C using the native Win32 API and BCrypt. No external dependencies, frameworks, or third-party libraries are required.
+
+## 🚀 주요 기능 (Features)
+
+*   **강력한 암호화 (Advanced Security):**
+    *   Windows 기본 내장 암호화 라이브러리인 **BCrypt API** 사용.
+    *   **AES-256-CBC** 알고리즘을 사용한 데이터 암호화.
+    *   **PBKDF2-HMAC-SHA256** (10만 번 반복) 알고리즘을 이용한 안전한 마스터 키 도출.
+    *   **HMAC-SHA256**을 이용한 금고 파일(`vault.dat`) 무결성 및 변조 방지 검증.
+*   **완벽한 메모리 보안 (Memory Safety):**
+    *   메모리 스캔 공격을 방지하기 위해 사용이 끝난 비밀번호나 암호화 키는 즉시 `SecureZeroMemory`를 통해 메모리에서 영구 삭제.
+    *   버퍼 오버플로우를 막기 위해 최신 C11 안전 문자열 함수(`_tcscpy_s`, `_stprintf_s` 등) 적용.
+*   **자동 입력 및 단축키 (Auto-Type & Hotkeys):**
+    *   지연 시간(Delay) 설정 후 포커스 된 창에 자동으로 아이디/비밀번호를 타이핑하는 기능 지원.
+    *   글로벌 단축키 지원: `Ctrl+Alt+1` (아이디), `Ctrl+Alt+2` (비밀번호), `Ctrl+Alt+3` (전체 탭 이동 포함 입력).
+*   **클립보드 보호 (Clipboard Protection):**
+    *   클립보드에 복사된 아이디/비밀번호는 10초 후 자동으로 클립보드에서 삭제되어 유출 방지.
+*   **드래그 앤 드롭 (OLE Drag & Drop):**
+    *   리스트에서 아이디나 비밀번호를 마우스로 클릭한 채 웹 브라우저나 로그인 창으로 바로 끌어다 놓아(Drag & Drop) 입력 가능. (순수 C 언어로 OLE COM 인터페이스 자체 구현)
+*   **다이나믹 리사이징 (Dynamic UI):**
+    *   창 크기 조절 및 최대화 지원. 창 크기에 맞춰 내부 컨트롤과 리스트뷰가 깨짐이나 잔상 없이 자연스럽게 늘어나고 배치됨.
+*   **크로스 컴파일 완벽 호환 (Universal Portability):**
+    *   내부적으로 데이터를 모두 **UTF-8 표준**으로 변환하여 저장하므로, MSVC에서 `Multi-Byte` 환경으로 빌드하든 `Unicode(Wide)` 환경으로 빌드하든 생성된 `vault.dat` 파일이 100% 완벽하게 호환됨.
+
+## 📂 파일 구조 (File Structure)
+
+*   `main.c` - 메인 애플리케이션 로직, UI 이벤트 핸들링, 파일 입출력 및 OLE Drag & Drop COM 구현부
+*   `crypto.c` / `crypto.h` - BCrypt 기반 AES, PBKDF2, HMAC, 난수 생성 등 암호화 모듈 구현부
+*   `resource.rc` / `resource.h` - Windows 다이얼로그 템플릿, 아이콘, 단축키 및 UI 컨트롤 리소스 정의
+*   `build.bat` - MSVC 커맨드라인 자동 빌드 스크립트
+*   `add_bom.ps1` - 소스 파일 한글 깨짐 방지를 위한 UTF-8 BOM 자동 삽입 파워쉘 스크립트
+
+## 🛠️ 빌드 방법 (How to Build)
+
+본 프로젝트는 Visual Studio (MSVC) 환경에서 컴파일되도록 설계되었습니다.
+
+**방법 1: 스크립트를 통한 빌드**
+1. 시작 메뉴에서 **"x64 Native Tools Command Prompt for VS"** (또는 x86) 개발자 명령 프롬프트를 엽니다.
+2. 프로젝트 폴더로 이동한 후 `build.bat` 스크립트를 실행합니다.
+   ```cmd
+   > build.bat
+   ```
+3. 컴파일이 완료되면 `PasswordManager.exe` 파일이 생성됩니다.
+
+**방법 2: Visual Studio IDE 사용**
+1. 빈 C++ Windows 데스크톱 프로젝트를 생성합니다.
+2. `.c`, `.h`, `.rc` 파일들을 프로젝트에 추가합니다.
+3. 속성 -> 링커 -> 입력 -> 추가 종속성에 `bcrypt.lib`, `comctl32.lib`, `ole32.lib` 를 추가합니다. (코드 내의 `#pragma comment` 덕분에 생략 가능할 수도 있습니다.)
+4. `Ctrl+Shift+B`를 눌러 솔루션을 빌드합니다. (한글 깨짐 방지를 위해 파일들이 UTF-8 BOM으로 저장되어 있어야 합니다.)
+
+## 📖 사용 방법 (Usage)
+
+1. **초기 설정:** 프로그램을 처음 실행하면 새로운 마스터 비밀번호를 설정하는 창이 뜹니다.
+2. **항목 추가/수정/삭제:** 목록에서 우클릭이나 하단 버튼을 통해 저장할 계정 정보를 관리합니다.
+3. **입력 활용:**
+   - **버튼 복사:** `ID 복사` / `PW 복사` 버튼 클릭 후 10초 내에 원하는 곳에 붙여넣기.
+   - **단축키 입력:** 로그인할 웹사이트를 열어두고 단축키(`Ctrl+Alt+1/2/3`)를 누르기.
+   - **드래그 앤 드롭:** 리스트에서 아이디나 비밀번호 항목을 꾹 누른 채로 원하는 브라우저 텍스트 박스에 끌어다 놓기.
+
+## ⚠️ 주의 사항 (Security Notice)
+
+이 프로젝트는 학습 및 개인 사용 목적으로 심플하게 개발되었습니다. 최신 보안 기법들이 적용되어 있으나, 마스터 비밀번호를 분실할 경우 파일(`vault.dat`)에 저장된 데이터는 **어떤 방법으로도 복구할 수 없습니다.** 백업과 관리에 주의하시기 바랍니다.
